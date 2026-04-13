@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(find:*)",
+      "Bash(tail:*)",
+      "Bash(for file in Features.tsx Gdpr.tsx Pricing.tsx Privacy.tsx Register.tsx Security.tsx Terms.tsx Login.tsx ApiDocs.tsx Tickets.tsx)",
+      "Bash(do echo \"Processing $file\")",
+      "Bash(done)",
+      "Bash(npm run build:*)",
+      "Bash(supabase secrets:*)",
+      "Bash(npx supabase:*)",
+      "Bash(wc:*)",
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls:*)",
+      "Bash(head:*)",
+      "Bash(supabase --version:*)",
+      "Bash(dir:*)"
+    ]
+  }
+}

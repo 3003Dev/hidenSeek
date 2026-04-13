@@ -1,0 +1,41 @@
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      }
+    } catch (err) {
+      logger.error('LiveChat: delete exception', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const applyMute = async (targetUserId: string, minutes: number) => {
+    if (!user) return;
+    setMutingId(targetUserId);
+    try {
+      const expiresAt = new Date(Date.now() + minutes * 60000).toISOString();
+      const { error } = await supabase.from('chat_mutes').insert({
+        user_id: targetUserId,
+        expires_at: expiresAt,
+        created_by: user.id,
+        reason: `Muted for ${minutes} min`,
+      });
+      if (error) {
+        logger.error('LiveChat: mute failed', error);
+      } else if (targetUserId === user.id) {
+        setMuteUntil(expiresAt);
+        setMuteMessage(`Vous êtes en mute jusqu'à ${new Date(expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+      }
+    } catch (err) {
+      logger.error('LiveChat: mute exception', err);
+    } finally {
+      setMutingId(null);
+    }
+  };
+
+  const renderBadge = (badge: BadgeKey | RoleKey, idx: number) => {
+    const meta = BADGE_STYLES[badge as BadgeKey] || ROLE_STYLES[badge as RoleKey];
+    if (!meta) return null;
+    return (
+      <span
+        key={`${badge}-${idx}`}
+        className="live-chat-badge"
+        style={{ color: meta.color, background: meta.bg, borderColor: meta.bg }}
