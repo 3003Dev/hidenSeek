@@ -53,8 +53,8 @@ const clientConfig: any = {
     autoRefreshToken: true,
     storage: customStorage,
     storageKey: 'sn-session',
-    detectSessionInUrl: false,
-    flowType: 'pkce',
+    detectSessionInUrl: true,
+    flowType: 'implicit',
   },
   global: {
     headers: {
