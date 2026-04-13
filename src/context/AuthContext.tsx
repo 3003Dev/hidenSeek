@@ -47,65 +47,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const { data, error } = await supabase.auth.getSession();
 
-        // If there's an error getting the session, try to refresh it
-        if (error) {
-          console.log('Session error on init, attempting refresh');
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-
-          if (!refreshError && refreshData.session) {
-            const u = refreshData.session.user;
-            if (!alive) return;
-            setUser(u);
-
-            if (u) {
-              const p = await loadProfile(u);
-              if (!alive) return;
-              setProfile(p);
-            }
-          } else {
-            // Clear corrupted session
-            console.log('Clearing corrupted session');
-            await supabase.auth.signOut();
-            if (!alive) return;
-            setUser(null);
-            setProfile(null);
-          }
-        } else {
-          const u = data.session?.user ?? null;
+        if (!error && data.session) {
+          const u = data.session.user;
           if (!alive) return;
-
           setUser(u);
-
-          if (u) {
-            const p = await loadProfile(u);
-            if (!alive) return;
-            setProfile(p);
-          } else {
-            setProfile(null);
-          }
-        }
-      } catch (err) {
-        console.log('Init error:', err);
-        // Try to clear potentially corrupted session data
-        try {
-          await supabase.auth.signOut();
-        } catch {
-          // Force clear localStorage if signOut fails
+          const p = await loadProfile(u);
+          if (alive) setProfile(p);
+        } else {
+          // Try refresh without signing out
           try {
-            localStorage.removeItem('sn-session');
-            Object.keys(localStorage).forEach(key => {
-              if (key.startsWith('sb-') || key.startsWith('supabase')) {
-                localStorage.removeItem(key);
-              }
-            });
+            const { data: refreshData } = await supabase.auth.refreshSession();
+            if (refreshData.session && alive) {
+              const u = refreshData.session.user;
+              setUser(u);
+              const p = await loadProfile(u);
+              if (alive) setProfile(p);
+            } else if (alive) {
+              setUser(null);
+              setProfile(null);
+            }
           } catch {
-            // Silent fail if localStorage is not accessible
+            if (alive) {
+              setUser(null);
+              setProfile(null);
+            }
           }
         }
-
-        if (!alive) return;
-        setUser(null);
-        setProfile(null);
+      } catch {
+        if (alive) {
+          setUser(null);
+          setProfile(null);
+        }
       } finally {
         if (alive) setLoading(false);
       }
@@ -343,7 +315,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // ✅ pas de user_id envoyé (trigger SQL)
         const { error } = await supabase.from('user_sessions').insert({
-          user_id: user.id,
           session_id: sid,
           last_seen: new Date().toISOString(),
         });
