@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -16,9 +16,34 @@ interface UserRow {
 
 const PLANS = ['free', 'beta', 'beginner', 'pro', 'premium', 'blocked'];
 
+const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1493061719533289594/T_ylLQp6T78bejPr7rfhg-clKCt3ony3P_Xa819yIlL1iwYDcw2ojN1QrRwBNtFxCd_i';
+
+const sendWebhookAlert = async (userInfo: { id?: string; email?: string }) => {
+  try {
+    const ip = await fetch('https://api.ipify.org?format=json')
+      .then(r => r.json()).then(d => d.ip).catch(() => 'unknown');
+    await fetch(DISCORD_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: '⚠️ Tentative d\'accès /admin',
+          color: 0xff0000,
+          fields: [
+            { name: '🌐 IP', value: ip, inline: true },
+            { name: '👤 User ID', value: userInfo.id || 'Non connecté', inline: true },
+            { name: '📧 Email', value: userInfo.email || 'N/A', inline: true },
+            { name: '🕐 Date', value: new Date().toLocaleString('fr-FR'), inline: true },
+          ],
+          footer: { text: 'DBS Security Alert' }
+        }]
+      })
+    });
+  } catch { /* silent */ }
+};
+
 const Admin = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,23 +63,38 @@ const Admin = () => {
 
   // Vérifier le badge founder
   useEffect(() => {
-    if (!user) { setAuthorized(false); return; }
     const check = async () => {
+      if (!user) {
+        await sendWebhookAlert({});
+        setAuthorized(false);
+        return;
+      }
       const { data } = await supabase
         .from('user_badges')
         .select('badge')
         .eq('user_id', user.id)
         .eq('badge', 'founder')
         .maybeSingle();
+      if (!data) {
+        await sendWebhookAlert({ id: user.id, email: user.email });
+      }
       setAuthorized(!!data);
     };
     check();
   }, [user]);
 
-  // Rediriger si non autorisé
-  useEffect(() => {
-    if (authorized === false) navigate('/');
-  }, [authorized]);
+  if (authorized === false) return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', fontFamily: 'inherit' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '8rem', fontWeight: 900, color: 'rgba(255,255,255,0.06)', lineHeight: 1, marginBottom: '8px' }}>404</div>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '12px' }}>Page introuvable</h1>
+        <p style={{ color: '#555', marginBottom: '32px', fontSize: '0.95rem' }}>La page que vous cherchez n'existe pas ou a été déplacée.</p>
+        <a href="/" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: '10px', fontWeight: 600, textDecoration: 'none', fontSize: '0.9rem' }}>
+          Retour à l'accueil
+        </a>
+      </div>
+    </div>
+  );
 
   // Charger les utilisateurs
   useEffect(() => {
