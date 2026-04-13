@@ -53,8 +53,8 @@ const clientConfig: any = {
     autoRefreshToken: true,
     storage: customStorage,
     storageKey: 'sn-session',
-    detectSessionInUrl: true,
-    flowType: 'implicit',
+    detectSessionInUrl: false,
+    flowType: 'pkce',
   },
   global: {
     headers: {
@@ -71,6 +71,14 @@ if (!REALTIME_DISABLED) {
     },
     log_level: 'error',
   };
+}
+
+// Force persist session from sessionStorage to localStorage
+if (typeof window !== "undefined") {
+  const ss = sessionStorage.getItem("sn-session");
+  if (ss && !localStorage.getItem("sn-session")) {
+    localStorage.setItem("sn-session", ss);
+  }
 }
 
 export const supabase = createClient(dbUrl, dbKey, clientConfig);
