@@ -129,8 +129,8 @@ const getOrInitCredits = async (
 };
 
 
-const EXTERNAL_API_URL = 'https://wbvbjfabddvtsmmeidzb.supabase.co/functions/v1/api-search';
-const EXTERNAL_API_KEY = 'sk_live_jwgK9iWt5FjCEHQj36S15yvZBaSHkxmB7e7ujff3ZSwUnTPR';
+const EXTERNAL_API_URL = import.meta.env.VITE_SEARCH_API_URL;
+const EXTERNAL_API_KEY = import.meta.env.VITE_SEARCH_API_KEY;
 
 const callLeakOsintAPI = async (rawQuery: string, _userId: string): Promise<{
   results: SearchResult[];
