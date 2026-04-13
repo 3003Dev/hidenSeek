@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -15,7 +14,6 @@ interface UserRow {
 }
 
 const PLANS = ['free', 'beta', 'beginner', 'pro', 'premium', 'blocked'];
-
 const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1493061719533289594/T_ylLQp6T78bejPr7rfhg-clKCt3ony3P_Xa819yIlL1iwYDcw2ojN1QrRwBNtFxCd_i';
 
 const sendWebhookAlert = async (userInfo: { id?: string; email?: string }) => {
@@ -27,7 +25,7 @@ const sendWebhookAlert = async (userInfo: { id?: string; email?: string }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         embeds: [{
-          title: '⚠️ Tentative d\'accès /admin',
+          title: "⚠️ Tentative d'accès /admin",
           color: 0xff0000,
           fields: [
             { name: '🌐 IP', value: ip, inline: true },
@@ -46,7 +44,7 @@ const Admin = () => {
   const { user } = useAuth();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [newPlan, setNewPlan] = useState('');
@@ -61,48 +59,15 @@ const Admin = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Vérifier le badge founder
-  useEffect(() => {
-    const check = async () => {
-      if (!user) {
-        await sendWebhookAlert({});
-        setAuthorized(false);
-        return;
-      }
-      const { data } = await supabase
-        .from('user_badges')
-        .select('badge')
-        .eq('user_id', user.id)
-        .eq('badge', 'founder')
-        .maybeSingle();
-      if (!data) {
-        await sendWebhookAlert({ id: user.id, email: user.email });
-      }
-      setAuthorized(!!data);
+  const getPlanColor = (plan: string) => {
+    const colors: Record<string, string> = {
+      premium: '#ffd700', pro: '#4dabf7', beginner: '#ff6b9d',
+      beta: '#10b981', free: '#888', blocked: '#ef4444'
     };
-    check();
-  }, [user]);
+    return colors[plan] || '#888';
+  };
 
-  if (authorized === false) return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', fontFamily: 'inherit' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '8rem', fontWeight: 900, color: 'rgba(255,255,255,0.06)', lineHeight: 1, marginBottom: '8px' }}>404</div>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '12px' }}>Page introuvable</h1>
-        <p style={{ color: '#555', marginBottom: '32px', fontSize: '0.95rem' }}>La page que vous cherchez n'existe pas ou a été déplacée.</p>
-        <a href="/" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: '10px', fontWeight: 600, textDecoration: 'none', fontSize: '0.9rem' }}>
-          Retour à l'accueil
-        </a>
-      </div>
-    </div>
-  );
-
-  // Charger les utilisateurs
-  useEffect(() => {
-    if (!authorized) return;
-    loadUsers();
-  }, [authorized]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
       const { data: profiles } = await supabase
@@ -139,28 +104,50 @@ const Admin = () => {
         free: enriched.filter(u => u.plan === 'free').length,
         blocked: enriched.filter(u => u.plan === 'blocked').length,
       });
-    } catch (e) {
+    } catch {
       showToast('Erreur lors du chargement', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Check founder badge — ALWAYS before any conditional return
+  useEffect(() => {
+    const check = async () => {
+      if (!user) {
+        await sendWebhookAlert({});
+        setAuthorized(false);
+        return;
+      }
+      const { data } = await supabase
+        .from('user_badges').select('badge')
+        .eq('user_id', user.id).eq('badge', 'founder').maybeSingle();
+      if (!data) {
+        await sendWebhookAlert({ id: user.id, email: user.email });
+        setAuthorized(false);
+      } else {
+        setAuthorized(true);
+      }
+    };
+    check();
+  }, [user?.id]);
+
+  // Load users when authorized
+  useEffect(() => {
+    if (authorized === true) loadUsers();
+  }, [authorized, loadUsers]);
 
   const handleSaveUser = async () => {
     if (!editingUser) return;
     setSaving(true);
     try {
-      // Update plan
-      if (newPlan && newPlan !== editingUser.plan) {
-        const creditsMap: Record<string, number> = { free: 10, beta: 30, beginner: 100, pro: 500, premium: 5000, blocked: 0 };
-        await supabase.from('user_plans').upsert({
-          user_id: editingUser.id,
-          plan: newPlan,
-          credits_per_day: creditsMap[newPlan] || 10,
-        }, { onConflict: 'user_id' });
-      }
+      const creditsMap: Record<string, number> = { free: 10, beta: 30, beginner: 100, pro: 500, premium: 5000, blocked: 0 };
+      await supabase.from('user_plans').upsert({
+        user_id: editingUser.id,
+        plan: newPlan,
+        credits_per_day: creditsMap[newPlan] || 10,
+      }, { onConflict: 'user_id' });
 
-      // Update credits
       if (newCredits !== '') {
         await supabase.from('user_credits').upsert({
           user_id: editingUser.id,
@@ -172,7 +159,7 @@ const Admin = () => {
       showToast('Utilisateur mis à jour !');
       setEditingUser(null);
       await loadUsers();
-    } catch (e) {
+    } catch {
       showToast('Erreur lors de la sauvegarde', 'error');
     } finally {
       setSaving(false);
@@ -183,17 +170,13 @@ const Admin = () => {
     if (!newBadge.trim()) return;
     try {
       await supabase.from('user_badges').upsert({
-        user_id: userId,
-        badge: newBadge.trim(),
-        granted_at: new Date().toISOString(),
-        granted_by: user?.id,
+        user_id: userId, badge: newBadge.trim(),
+        granted_at: new Date().toISOString(), granted_by: user?.id,
       }, { onConflict: 'user_id,badge' });
       showToast(`Badge "${newBadge}" ajouté !`);
       setNewBadge('');
       await loadUsers();
-    } catch (e) {
-      showToast('Erreur badge', 'error');
-    }
+    } catch { showToast('Erreur badge', 'error'); }
   };
 
   const handleRemoveBadge = async (userId: string, badge: string) => {
@@ -201,9 +184,7 @@ const Admin = () => {
       await supabase.from('user_badges').delete().eq('user_id', userId).eq('badge', badge);
       showToast(`Badge "${badge}" supprimé`);
       await loadUsers();
-    } catch (e) {
-      showToast('Erreur suppression badge', 'error');
-    }
+    } catch { showToast('Erreur suppression badge', 'error'); }
   };
 
   const filteredUsers = users.filter(u =>
@@ -212,37 +193,39 @@ const Admin = () => {
     u.id.includes(search)
   );
 
-  const getPlanColor = (plan: string) => {
-    const colors: Record<string, string> = {
-      premium: '#ffd700', pro: '#4dabf7', beginner: '#ff6b9d',
-      beta: '#10b981', free: '#888', blocked: '#ef4444'
-    };
-    return colors[plan] || '#888';
-  };
-
+  // Loading state
   if (authorized === null) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-      <div style={{ color: '#fff' }}>Vérification...</div>
+      <div style={{ textAlign: 'center', color: '#fff' }}>
+        <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', marginBottom: '12px', display: 'block', color: '#666' }}></i>
+        <span style={{ color: '#666', fontSize: '0.9rem' }}>Vérification...</span>
+      </div>
+    </div>
+  );
+
+  // Fake 404 for unauthorized
+  if (authorized === false) return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', fontFamily: 'inherit' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '8rem', fontWeight: 900, color: 'rgba(255,255,255,0.06)', lineHeight: 1, marginBottom: '8px' }}>404</div>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '12px' }}>Page introuvable</h1>
+        <p style={{ color: '#555', marginBottom: '32px', fontSize: '0.95rem' }}>La page que vous cherchez n'existe pas ou a été déplacée.</p>
+        <a href="/" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: '10px', fontWeight: 600, textDecoration: 'none', fontSize: '0.9rem' }}>
+          Retour à l'accueil
+        </a>
+      </div>
     </div>
   );
 
   return (
     <div style={{ minHeight: '100vh', background: '#000', color: '#fff', fontFamily: 'inherit', paddingTop: '80px' }}>
-      {/* Toast */}
       {toast && (
-        <div style={{
-          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
-          padding: '12px 20px', borderRadius: '10px',
-          background: toast.type === 'success' ? 'rgba(16,185,129,0.9)' : 'rgba(239,68,68,0.9)',
-          color: '#fff', fontWeight: 600, fontSize: '0.9rem',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
-        }}>
+        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, padding: '12px 20px', borderRadius: '10px', background: toast.type === 'success' ? 'rgba(16,185,129,0.9)' : 'rgba(239,68,68,0.9)', color: '#fff', fontWeight: 600, fontSize: '0.9rem', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
           {toast.msg}
         </div>
       )}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
-        {/* Header */}
         <div style={{ marginBottom: '32px' }}>
           <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-1px', marginBottom: '4px' }}>
             <i className="fas fa-shield-alt" style={{ marginRight: '12px', color: '#ffd700' }}></i>
@@ -270,23 +253,17 @@ const Admin = () => {
         </div>
 
         {/* Search */}
-        <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px' }}>
             <i className="fas fa-search" style={{ color: '#666' }}></i>
-            <input
-              type="text"
-              placeholder="Rechercher par email, username ou ID..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', flex: 1, fontFamily: 'inherit', fontSize: '0.95rem' }}
-            />
+            <input type="text" placeholder="Rechercher par email, username ou ID..." value={search} onChange={e => setSearch(e.target.value)}
+              style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', flex: 1, fontFamily: 'inherit', fontSize: '0.95rem' }} />
           </div>
           <button onClick={loadUsers} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-            <i className="fas fa-refresh"></i>
+            <i className="fas fa-sync-alt"></i>
           </button>
         </div>
 
-        {/* Users Table */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: '#666' }}>
             <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', marginBottom: '12px', display: 'block' }}></i>
@@ -315,7 +292,7 @@ const Admin = () => {
                         {u.plan.toUpperCase()}
                       </span>
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: '0.85rem', color: '#aaa' }}>
+                    <td style={{ padding: '14px 16px', fontSize: '0.85rem' }}>
                       <span style={{ color: '#fff', fontWeight: 600 }}>{u.credits_remaining}</span>
                       <span style={{ color: '#444' }}> / {u.credits_per_day}</span>
                     </td>
@@ -333,10 +310,8 @@ const Admin = () => {
                       {new Date(u.created_at).toLocaleDateString('fr-FR')}
                     </td>
                     <td style={{ padding: '14px 16px' }}>
-                      <button
-                        onClick={() => { setEditingUser(u); setNewPlan(u.plan); setNewCredits(String(u.credits_remaining)); }}
-                        style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'inherit' }}
-                      >
+                      <button onClick={() => { setEditingUser(u); setNewPlan(u.plan); setNewCredits(String(u.credits_remaining)); }}
+                        style={{ padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'inherit' }}>
                         <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>Éditer
                       </button>
                     </td>
@@ -351,7 +326,6 @@ const Admin = () => {
         )}
       </div>
 
-      {/* Modal édition */}
       {editingUser && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, backdropFilter: 'blur(4px)' }}
           onClick={e => { if (e.target === e.currentTarget) setEditingUser(null); }}>
@@ -361,7 +335,6 @@ const Admin = () => {
               <p style={{ color: '#666', fontSize: '0.85rem' }}>{editingUser.username} — {editingUser.email}</p>
             </div>
 
-            {/* Plan */}
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', color: '#aaa', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Plan</label>
               <select value={newPlan} onChange={e => setNewPlan(e.target.value)} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontFamily: 'inherit', fontSize: '0.95rem' }}>
@@ -369,14 +342,12 @@ const Admin = () => {
               </select>
             </div>
 
-            {/* Crédits */}
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', color: '#aaa', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Crédits restants</label>
               <input type="number" value={newCredits} onChange={e => setNewCredits(e.target.value)}
                 style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#fff', fontFamily: 'inherit', fontSize: '0.95rem', boxSizing: 'border-box' }} />
             </div>
 
-            {/* Ajouter badge */}
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', color: '#aaa', fontSize: '0.8rem', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ajouter un badge</label>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -386,7 +357,6 @@ const Admin = () => {
                   <i className="fas fa-plus"></i>
                 </button>
               </div>
-              {/* Badges actuels */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
                 {editingUser.badges.map(b => (
                   <span key={b} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '20px', fontSize: '0.78rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#ccc' }}>
@@ -397,7 +367,6 @@ const Admin = () => {
               </div>
             </div>
 
-            {/* Actions */}
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setEditingUser(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#aaa', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.95rem' }}>
                 Annuler
