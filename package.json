@@ -1,8 +1,8 @@
 {
-  "name": "Dbs",
+  "name": "NetQuery",
   "private": true,
   "version": "1.0.0",
-  "description": "Dbs - OSINT & Dark Web Search Platform",
+  "description": "NetQuery - OSINT & Dark Web Search Platform",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -36,5 +36,8 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4"
+  },
+  "overrides": {
+    "@babel/plugin-transform-template-literals": "7.26.8"
   }
 }
